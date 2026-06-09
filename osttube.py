@@ -1,33 +1,50 @@
 import streamlit as st
 import sqlite3
+import os
 
-# Veritabanı bağlantısı
-conn = sqlite3.connect("osttube_database.db", check_same_thread=False)
-c = conn.cursor()
+# 1. VERİTABANI GÜVENLİK SIFIRLAMASI
+# Eğer veritabanı sütun hatası verirse, dosyayı silip yeniden başlatır
+db_file = "osttube_database.db"
+try:
+    conn = sqlite3.connect(db_file, check_same_thread=False)
+    c = conn.cursor()
+    # Eğer tablo 3 sütundan azsa eski olduğunu anlar ve sıfırlar
+    c.execute("PRAGMA table_info(videolar)")
+    columns = c.fetchall()
+    if len(columns) != 3: 
+        conn.close()
+        os.remove(db_file)
+        conn = sqlite3.connect(db_file, check_same_thread=False)
+        c = conn.cursor()
+except:
+    pass
+
 c.execute("CREATE TABLE IF NOT EXISTS videolar (id INTEGER PRIMARY KEY AUTOINCREMENT, baslik TEXT, url TEXT)")
 conn.commit()
 
-st.set_page_config(page_title="ÖstTube Arşiv", layout="wide")
-st.title("ÖstTube Video Arşivi")
+# 2. ARAYÜZ
+st.set_page_config(page_title="ÖstTube v6.1", layout="wide")
+st.title("📺 ÖstTube - Sorunsuz Arşiv")
 
-# Bot Yükleme
+# BOT
 if st.button("🤖 Bot: Kanal Videolarını Yükle"):
-    # Örnek linkler
     videolar = [("TheMurat - Araba Modu", "An-N7v6_6p8"), ("KayzerTurco - Modlu Survival", "L_LUpn-6yDM")]
     for v in videolar:
         c.execute("INSERT OR IGNORE INTO videolar (baslik, url) VALUES (?, ?)", (v[0], v[1]))
     conn.commit()
-    st.success("Yüklendi!")
+    st.rerun()
 
-# Listeleme ve YouTube'a Yönlendirme
-c.execute("SELECT * FROM videolar")
+# LİSTELEME
+c.execute("SELECT id, baslik, url FROM videolar")
 for v in c.fetchall():
     v_id, baslik, v_url = v
-    # Oynatıcı yerine linke git butonu
-    if st.button(f"📺 İZLE: {baslik}", key=f"btn_{v_id}"):
-        st.markdown(f'<meta http-equiv="refresh" content="0; url=https://youtube.com/watch?v={v_url}">', unsafe_allow_html=True)
+    # Videoyu sitemizde oynatmıyoruz, YouTube'a gönderiyoruz (En kesin çözüm!)
+    st.markdown(f"### {baslik}")
+    if st.button(f"▶️ YOUTUBE'DA İZLE", key=f"btn_{v_id}"):
+        st.link_button("Videoya Git", f"https://youtube.com/watch?v={v_url}")
 
-if st.button("🚨 Sıfırla"):
+# SIFIRLAMA
+if st.button("🚨 Veritabanını Temizle"):
     c.execute("DELETE FROM videolar")
     conn.commit()
     st.rerun()
