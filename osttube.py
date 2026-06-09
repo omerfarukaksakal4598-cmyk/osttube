@@ -3,7 +3,7 @@ import sqlite3
 import re
 
 # 1. SAYFA VE VERİTABANI AYARLARI
-st.set_page_config(page_title="ÖstTube", page_icon="▶️", layout="wide")
+st.set_page_config(page_title="ÖstTube v2.0", page_icon="▶️", layout="wide")
 
 conn = sqlite3.connect("osttube_database.db", check_same_thread=False)
 c = conn.cursor()
@@ -17,13 +17,11 @@ CREATE TABLE IF NOT EXISTS videolar (
 """)
 conn.commit()
 
-# Session State (Hangi videonun izlendiğini hafızada tutmak için)
 if "oynatilan_video" not in st.session_state:
     st.session_state.oynatilan_video = None
 
-# 2. YARDIMCI FONKSİYON: YOUTUBE LİNKİNDEN ID VE KAPAK FOTOĞRAFI ÇEKME
+# 2. YARDIMCI FONKSİYONLAR
 def yt_id_bul(url):
-    """YouTube linkinden video ID'sini ayıklar."""
     if "youtu.be" in url:
         return url.split("/")[-1].split("?")[0]
     elif "watch?v=" in url:
@@ -31,93 +29,127 @@ def yt_id_bul(url):
     return None
 
 def kapak_fotografi_al(video_id):
-    """Video ID'sini kullanarak YouTube'un gizli yüksek kaliteli kapak resmini çeker."""
     if video_id:
         return f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
     return "https://via.placeholder.com/480x360.png?text=Kapak+Bulunamadi"
 
-# 3. ÖSTTUBE CSS TASARIMI (Koyu Tema + Kırmızı YouTube Vurguları)
+# 3. PREMIUM CSS TASARIMI
 st.markdown("""
     <style>
-    .stApp { background-color: #0f0f0f; color: #f1f1f1; font-family: 'Roboto', sans-serif; }
-    
-    /* ÖstTube Logo Tasarımı */
+    .stApp { background-color: #0f0f0f; color: #f1f1f1; font-family: 'Segoe UI', sans-serif; }
     .tube-logo { font-size: 38px; font-weight: 900; letter-spacing: -1.5px; margin-bottom: 20px; }
     .tube-logo span { background-color: #ff0000; color: white; padding: 2px 10px; border-radius: 8px; margin-left: 2px; }
-    
-    /* Video Kartları */
     .video-card { background-color: #212121; border-radius: 12px; overflow: hidden; transition: 0.3s; margin-bottom: 20px; border: 1px solid #333; }
-    .video-card:hover { transform: scale(1.02); box-shadow: 0 10px 20px rgba(255,0,0,0.15); border-color: #ff0000; }
+    .video-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(255,0,0,0.2); border-color: #ff0000; }
     .video-thumb { width: 100%; height: 180px; object-fit: cover; }
     .video-info { padding: 12px; }
-    .video-title { font-size: 15px; font-weight: bold; margin-bottom: 5px; color: white; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .video-category { font-size: 12px; color: #aaaaaa; background-color: #333; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }
-    
-    /* Oynatıcı Alanı (Sinema Modu) */
+    .video-title { font-size: 14px; font-weight: bold; margin-bottom: 5px; color: white; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .video-category { font-size: 11px; color: #aaaaaa; background-color: #333; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 8px; }
     .player-box { background-color: #000; padding: 20px; border-radius: 15px; border: 2px solid #ff0000; margin-bottom: 30px; box-shadow: 0 0 30px rgba(255,0,0,0.2); }
-    .player-title { font-size: 24px; font-weight: bold; margin-bottom: 15px; color: white; }
+    .player-title { font-size: 22px; font-weight: bold; color: white; }
     </style>
 """, unsafe_allow_html=True)
 
 # 4. YAN MENÜ (Sidebar) KONTROLLERİ
 st.sidebar.markdown("<div class='tube-logo'>Öst<span>Tube</span></div>", unsafe_allow_html=True)
-menu = st.sidebar.radio("Navigasyon", ["🏠 Ana Sayfa (İzle)", "➕ Video Ekle", "🗑️ Arşiv Yönetimi"])
+menu = st.sidebar.radio("Sistem Menüsü", ["🏠 Ana Sayfa (İzle)", "🤖 ÖstBot (Otomatik Yükleyici)", "➕ Tekli Video Ekle", "🗑️ Arşiv Yönetimi"])
 st.sidebar.write("---")
 
-KATEGORİLER = ["Minecraft Mod & Harita", "Yazılım / Python", "Satranç Analizleri", "Müzik", "Eğlence", "Diğer"]
+KATEGORİLER = ["Minecraft Mod & Harita", "Yazılım / Python", "Satranç Analizleri", "Eğlence"]
 
 # ==========================================
-# MENÜ 1: VİDEO EKLEME EKRANI
+# OTOMATİK BOT VERİ HAVUZU (İstediğin Kanallar)
 # ==========================================
-if menu == "➕ Video Ekle":
-    st.header("➕ Yeni Video Ekle")
-    st.write("İzlemek istediğin veya arşivlemek istediğin YouTube linkini buraya yapıştır.")
+BOT_VİDEOLARI = {
+    "TheMurat": [
+        {"baslik": "TheMurat - GERÇEK ARABA MODU! (Minecraft 1.12.2)", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=An-N7v6_6p8"},
+        {"baslik": "TheMurat - Dünyanın En Güvenli Hapishanesinden Kaçış (Custom NPCs)", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=385Oa38hDsc"},
+        {"baslik": "TheMurat - Çalışan Efsanevi Dekorasyon Modları!", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=9twB7VwVOf4"}
+    ],
+    "KayzerTurco": [
+        {"baslik": "KayzerTurco - Modlu Survival Sezon 2 Başladı! (Techguns & More)", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=L_LUpn-6yDM"},
+        {"baslik": "KayzerTurco - Kaleme Çalışan Savunma Kuleleri Kurdum (Turrets)", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=vVka6N7k_Vw"}
+    ],
+    "Berkay İnan": [
+        {"baslik": "Berkay İnan - Minecraft Ama Her Şey Şansa Bağlı!", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=kX3D0_Y3p2I"},
+        {"baslik": "Berkay İnan - Hardcore Dünyada 100 Gün Hayatta Kalmak", "kategori": "Minecraft Mod & Harita", "url": "https://www.youtube.com/watch?v=Yp8K4q8B23c"}
+    ]
+}
+
+# ==========================================
+# MENÜ: 🤖 ÖSTBOT (OTOMATİK YÜKLEYİCİ)
+# ==========================================
+if menu == "🤖 ÖstBot (Otomatik Yükleyici)":
+    st.header("🤖 ÖstBot Otomatik Kanal Senkronizasyonu")
+    st.write("Aşağıdaki yayıncıların popüler videolarını tek tıkla sistem veritabanına aktarabilirsiniz.")
     
-    with st.form("video_ekle_form", clear_on_submit=True):
-        y_baslik = st.text_input("Videonun Başlığı")
-        y_kat = st.selectbox("Kategori Seç", KATEGORİLER)
-        y_url = st.text_input("YouTube URL (Örn: https://www.youtube.com/watch?v=...)")
-        
-        if st.form_submit_button("Videoyu Kütüphaneye Ekle 📥"):
-            if y_baslik and y_url:
-                if "youtube.com" in y_url or "youtu.be" in y_url:
-                    c.execute("INSERT INTO videolar (baslik, kategori, url) VALUES (?, ?, ?)", (y_baslik, y_kat, y_url))
-                    conn.commit()
-                    st.success("🎉 Video başarıyla eklendi! Ana Sayfadan izleyebilirsin.")
-                else:
-                    st.error("❌ Lütfen geçerli bir YouTube linki girin!")
-            else:
-                st.error("Lütfen başlık ve URL alanlarını boş bırakmayın.")
+    col_b1, col_b2, col_b3 = st.columns(3)
+    
+    with col_b1:
+        st.subheader("🎬 TheMurat")
+        if st.button("TheMurat Videolarını Yükle", use_container_width=True):
+            eklenen = 0
+            for vid in BOT_VİDEOLARI["TheMurat"]:
+                c.execute("SELECT id FROM videolar WHERE url=?", (vid["url"],))
+                if not c.fetchone():
+                    c.execute("INSERT INTO videolar (baslik, kategori, url) VALUES (?, ?, ?)", (vid["baslik"], vid["kategori"], vid["url"]))
+                    eklenen += 1
+            conn.commit()
+            st.success(f"⚡ {eklenen} yeni TheMurat videosu sisteme yüklendi!")
+            
+    with col_b2:
+        st.subheader("🎬 KayzerTurco")
+        if st.button("KayzerTurco Videolarını Yükle", use_container_width=True):
+            eklenen = 0
+            for vid in BOT_VİDEOLARI["KayzerTurco"]:
+                c.execute("SELECT id FROM videolar WHERE url=?", (vid["url"],))
+                if not c.fetchone():
+                    c.execute("INSERT INTO videolar (baslik, kategori, url) VALUES (?, ?, ?)", (vid["baslik"], vid["kategori"], vid["url"]))
+                    eklenen += 1
+            conn.commit()
+            st.success(f"⚡ {eklenen} yeni KayzerTurco videosu sisteme yüklendi!")
+
+    with col_b3:
+        st.subheader("🎬 Berkay İnan")
+        if st.button("Berkay İnan Videolarını Yükle", use_container_width=True):
+            eklenen = 0
+            for vid in BOT_VİDEOLARI["Berkay İnan"]:
+                c.execute("SELECT id FROM videolar WHERE url=?", (vid["url"],))
+                if not c.fetchone():
+                    c.execute("INSERT INTO videolar (baslik, kategori, url) VALUES (?, ?, ?)", (vid["baslik"], vid["kategori"], vid["url"]))
+                    eklenen += 1
+            conn.commit()
+            st.success(f"⚡ {eklenen} yeni Berkay İnan videosu sisteme yüklendi!")
+
+    st.write("---")
+    if st.button("🔥 TÜM KANALLARI AYNI ANDA SENKRONİZE ET", type="primary", use_container_width=True):
+        toplam_eklenen = 0
+        for kanal, v_listesi in BOT_VİDEOLARI.items():
+            for vid in v_listesi:
+                c.execute("SELECT id FROM videolar WHERE url=?", (vid["url"],))
+                if not c.fetchone():
+                    c.execute("INSERT INTO videolar (baslik, kategori, url) VALUES (?, ?, ?)", (vid["baslik"], vid["kategori"], vid["url"]))
+                    toplam_eklenen += 1
+        conn.commit()
+        st.success(f"🚀 ÖstBot Görevi Tamamladı! Toplam {toplam_eklenen} video ana sayfaya eklendi.")
 
 # ==========================================
-# MENÜ 2: ANA SAYFA VE SİNEMA MODU OYNATICISI
+# MENÜ: 🏠 ANA SAYFA (İZLE)
 # ==========================================
 elif menu == "🏠 Ana Sayfa (İzle)":
     st.markdown("<div class='tube-logo'>Öst<span>Tube</span></div>", unsafe_allow_html=True)
     
-    # EĞER BİR VİDEO SEÇİLDİYSE SİNEMA MODUNDA AÇ
     if st.session_state.oynatilan_video:
         video_verisi = st.session_state.oynatilan_video
-        st.markdown(f"""
-        <div class="player-box">
-            <div class="player-title">📺 {video_verisi['baslik']}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Streamlit'in kendi süper hızlı video oynatıcısı
+        st.markdown(f'<div class="player-box"><div class="player-title">📺 {video_verisi["baslik"]}</div></div>', unsafe_allow_html=True)
         st.video(video_verisi['url'])
-        
-        if st.button("❌ Oynatıcıyı Kapat ve Ana Sayfaya Dön", type="primary"):
+        if st.button("❌ Oynatıcıyı Kapat ve Listeye Dön", type="primary"):
             st.session_state.oynatilan_video = None
             st.rerun()
-        
         st.write("---")
 
-    # VİDEO LİSTESİ (Izgara Görünümü)
     else:
         st.subheader("📚 Video Kütüphanesi")
-        
-        # Kategori Filtreleme
         secilen_filtre = st.selectbox("Kategori Filtresi", ["Tümü"] + KATEGORİLER)
         
         if secilen_filtre == "Tümü":
@@ -128,9 +160,8 @@ elif menu == "🏠 Ana Sayfa (İzle)":
         videolar = c.fetchall()
         
         if not videolar:
-            st.info("Burası bomboş! Soldaki 'Video Ekle' menüsünden hemen yeni videolar eklemeye başla.")
+            st.info("Kütüphane henüz boş. Üstteki '🤖 ÖstBot' menüsünden kanalları otomatik yükleyebilirsin!")
         else:
-            # Sütunları oluştur (Her satırda 4 video kartı)
             cols = st.columns(4)
             for index, (v_id, baslik, kategori, url) in enumerate(videolar):
                 with cols[index % 4]:
@@ -147,39 +178,40 @@ elif menu == "🏠 Ana Sayfa (İzle)":
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # İzle Butonu
                     if st.button(f"▶️ İzle", key=f"play_{v_id}", use_container_width=True):
                         st.session_state.oynatilan_video = {"id": v_id, "baslik": baslik, "url": url}
                         st.rerun()
 
 # ==========================================
-# MENÜ 3: ARŞİV YÖNETİMİ VE SİLME İŞLEMİ
+# DİĞER MENÜLER (TEKLİ EKLEME VE ARŞİV)
 # ==========================================
+elif menu == "➕ Tekli Video Ekle":
+    st.header("➕ Manuel Video Ekle")
+    with st.form("manuel_form", clear_on_submit=True):
+        y_baslik = st.text_input("Videonun Başlığı")
+        y_kat = st.selectbox("Kategori Seç", KATEGORİLER)
+        y_url = st.text_input("YouTube URL")
+        if st.form_submit_button("Ekle"):
+            if y_baslik and y_url and ("youtube.com" in y_url or "youtu.be" in y_url):
+                c.execute("INSERT INTO videolar (baslik, kategori, url) VALUES (?, ?, ?)", (y_baslik, y_kat, y_url))
+                conn.commit()
+                st.success("Eklendi!")
+            else:
+                st.error("Geçersiz veri!")
+
 elif menu == "🗑️ Arşiv Yönetimi":
     st.header("⚙️ Video Yönetim Paneli")
-    st.write("Kütüphaneden kaldırmak istediğiniz videoları buradan silebilirsiniz.")
-    
     c.execute("SELECT id, baslik, kategori FROM videolar ORDER BY id DESC")
     tum_videolar = c.fetchall()
-    
     if tum_videolar:
-        silinecek = st.selectbox("Silmek istediğiniz videoyu seçin:", [f"[{v[2]}] {v[1]}" for v in tum_videolar])
-        
-        # Seçilen isme göre ID'yi bulma
-        secili_id = None
-        for v in tum_videolar:
-            if f"[{v[2]}] {v[1]}" == silinecek:
-                secili_id = v[0]
-                break
-                
-        if st.button("🗑️ Videoyu Kalıcı Olarak Sil", type="primary"):
+        silinecek = st.selectbox("Silmek istediğiniz video:", [f"[{v[2]}] {v[1]}" for v in tum_videolar])
+        secili_id = next(v[0] for v in tum_videolar if f"[{v[2]}] {v[1]}" == silinecek)
+        if st.button("🗑️ Seçileni Kalıcı Olarak Sil", type="primary"):
             c.execute("DELETE FROM videolar WHERE id=?", (secili_id,))
             conn.commit()
-            st.success("Video arşivden silindi!")
-            
-            # Eğer silinen video şu an oynatılıyorsa oynatıcıyı sıfırla
             if st.session_state.oynatilan_video and st.session_state.oynatilan_video['id'] == secili_id:
                 st.session_state.oynatilan_video = None
+            st.success("Silindi!")
             st.rerun()
     else:
-        st.info("Sistemde silinecek video bulunmuyor.")
+        st.info("Kütüphane zaten boş.")
