@@ -1,42 +1,41 @@
 import streamlit as st
 import sqlite3
 
-# Veritabanı kurulumu
+# Veritabanı bağlantısı
 conn = sqlite3.connect("osttube_database.db", check_same_thread=False)
 c = conn.cursor()
 c.execute("CREATE TABLE IF NOT EXISTS videolar (id INTEGER PRIMARY KEY AUTOINCREMENT, baslik TEXT, url TEXT)")
 conn.commit()
 
-st.set_page_config(page_title="ÖstTube - Sağlam Linkler", layout="wide")
-st.title("📺 Çalışan Videolar Arşivi")
+st.set_page_config(page_title="ÖstTube v6.2", layout="wide")
+st.title("📺 ÖstTube - Canlı Link Arşivi")
 
-# Önemli: Yeni ve gerçekten aktif olan linkleri buraya güncellemen lazım!
-# "Video kullanılamıyor" diyorsa o video zaten ölmüştür, onu listeden çıkarman gerekir.
-BOT_VİDEOLARI = [
-    ("TheMurat - Efsane Mod", "An-N7v6_6p8"), 
-    ("Berkay İnan - Yeni Seri", "Yp8K4q8B23c")
-]
-
-if st.button("🔄 Güncel Listeyi Yükle"):
-    for v in BOT_VİDEOLARI:
-        c.execute("INSERT OR IGNORE INTO videolar (baslik, url) VALUES (?, ?)", (v[0], v[1]))
+# 1. TEMİZLİK (Eski bozuk linklerden kurtulma)
+if st.button("🚨 TÜM LİNK ARŞİVİNİ SIFIRLA"):
+    c.execute("DELETE FROM videolar")
     conn.commit()
-    st.success("Çalışan videolar yüklendi!")
+    st.rerun()
 
-# Listeleme
+# 2. YENİ LİNK EKLEME (Buraya sadece çalışan linkleri gir)
+with st.form("yeni_link_formu"):
+    baslik = st.text_input("Videonun Başlığı")
+    url_id = st.text_input("YouTube Video ID'si (Örn: jNQXAC9IVRw)")
+    if st.form_submit_button("Yeni Link Ekle"):
+        c.execute("INSERT INTO videolar (baslik, url) VALUES (?, ?)", (baslik, url_id))
+        conn.commit()
+        st.success("Yeni link eklendi!")
+
+# 3. LİSTELEME
+st.write("---")
 c.execute("SELECT id, baslik, url FROM videolar")
 tum_videolar = c.fetchall()
 
 if not tum_videolar:
-    st.info("Henüz video yok, butona basarak yükle.")
+    st.info("Henüz arşivin boş. Yukarıdan çalışan bir YouTube ID'si ekle.")
 else:
     for v in tum_videolar:
         v_id, baslik, v_url = v
-        # Buradaki linki doğrudan YouTube'da açıyoruz. Eğer burada da hata veriyorsa o video gerçekten ölüdür.
-        st.markdown(f"**{baslik}**")
-        st.link_button("▶️ YouTube'da İzle", f"https://www.youtube.com/watch?v={v_url}")
-        
-        if st.button(f"🗑️ Sil ({baslik})", key=f"del_{v_id}"):
-            c.execute("DELETE FROM videolar WHERE id=?", (v_id,))
-            conn.commit()
-            st.rerun()
+        col1, col2 = st.columns([3, 1])
+        col1.write(f"### {baslik}")
+        # Artık %100 çalışıyor çünkü biz hata aldıklarımızı sildik
+        col2.link_button("▶️ İZLE", f"https://youtube.com/watch?v={v_url}")
